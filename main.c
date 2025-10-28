@@ -1,186 +1,138 @@
-#define _POSIX_C_SOURCE 200809L
-#include <stdio.h>
+#include <gtk/gtk.h>
+#include <gtk-layer-shell.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <wayland-client.h>
-#include <cairo/cairo.h>
-#include <linux/input-event-codes.h>
+#include <math.h>
+#include <libappindicator3-0.1/libappindicator/app-indicator.h>
 
-#include "wlr-layer-shell-unstable-v1-client-protocol.h"
-#include "xdg-shell-client-protocol.h"
+typedef struct {
+  gboolean shaking;
+  int shake_offset;
+  int shake_count;
+} AppState;
 
-// Globals
-static struct wl_display *display;
-static struct wl_compositor *compositor;
-static struct wl_shm *shm;
-static struct zwlr_layer_shell_v1 *layer_shell;
+static gboolean shake_timeout(gpointer data) {
+  GtkWidget *widget = GTK_WIDGET(data);
+  AppState *state = g_object_get_data(G_OBJECT(widget), "state");
 
-static struct wl_surface *surface;
-static struct zwlr_layer_surface_v1 *layer_surface;
-
-static int configured = 0;
-static uint32_t configure_serial = 0;
-static int width = 200;
-static int height = 200;
-
-#define M_PI (3.14159265358979323846264338327950288)
-
-// ----------------------------------------------
-// Registry handlers
-// ----------------------------------------------
-static void registry_handler(void *data, struct wl_registry *registry,
-                             uint32_t id, const char *interface, uint32_t version) {
-  if (strcmp(interface, wl_compositor_interface.name) == 0) {
-    compositor = wl_registry_bind(registry, id, &wl_compositor_interface, 4);
-  } else if (strcmp(interface, wl_shm_interface.name) == 0) {
-    shm = wl_registry_bind(registry, id, &wl_shm_interface, 1);
-  } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
-    layer_shell = wl_registry_bind(registry, id, &zwlr_layer_shell_v1_interface, 1);
+  if (state->shake_count > 0) {
+    // Alternate offset: +10, -10, +8, -8, +6, -6, etc.
+    state->shake_offset = (state->shake_count % 2 == 0) ? 2 : -2;
+    state->shake_offset = state->shake_offset * (state->shake_count / 2 + 1) / 3;
+    state->shake_count--;
+    gtk_widget_queue_draw(widget);
+    return TRUE; // Continue
+  } else {
+    state->shaking = FALSE;
+    state->shake_offset = 0;
+    gtk_widget_queue_draw(widget);
+    return FALSE; // Stop
   }
 }
 
-static void registry_remover(void *data, struct wl_registry *registry, uint32_t id) {
-  (void)data;
-  (void)registry;
-  (void)id;
-}
-
-static const struct wl_registry_listener registry_listener = {
-  .global = registry_handler,
-  .global_remove = registry_remover,
-};
-
-// ----------------------------------------------
-// Layer surface handlers
-// ----------------------------------------------
-static void handle_layer_surface_configure(void *data,
-                                           struct zwlr_layer_surface_v1 *surf,
-                                           uint32_t serial,
-                                           uint32_t new_width,
-                                           uint32_t new_height) {
-  configure_serial = serial;
-  configured = 1;
-  zwlr_layer_surface_v1_ack_configure(surf, serial);
-}
-
-static void handle_layer_surface_closed(void *data,
-                                        struct zwlr_layer_surface_v1 *surf) {
-  (void)data;
-  (void)surf;
-  wl_display_disconnect(display);
-  exit(0);
-}
-
-static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
-  .configure = handle_layer_surface_configure,
-  .closed = handle_layer_surface_closed,
-};
-
-// ----------------------------------------------
-// Simple SHM buffer helper
-// ----------------------------------------------
-#include <sys/mman.h>
-#include <fcntl.h>
-
-static int create_shm_file(size_t size) {
-  char name[] = "/leaderd-shm-XXXXXX";
-  int fd = mkstemp(name);
-  if (fd < 0)
-    return -1;
-  unlink(name);
-  if (ftruncate(fd, size) < 0) {
-    close(fd);
-    return -1;
+static void start_shake(GtkWidget *widget) {
+  AppState *state = g_object_get_data(G_OBJECT(widget), "state");
+  if (!state->shaking) {
+    state->shaking = TRUE;
+    state->shake_count = 6; // Number of shakes
+    g_timeout_add(50, shake_timeout, widget); // 50ms intervals
   }
-  return fd;
 }
 
-static struct wl_buffer *create_buffer(int width, int height, cairo_t **out_cr, cairo_surface_t **out_surface) {
-  int stride = width * 4;
-  int size = stride * height;
+static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
+  AppState *state = g_object_get_data(G_OBJECT(widget), "state");
+  int width = gtk_widget_get_allocated_width(widget);
+  int height = gtk_widget_get_allocated_height(widget);
 
-  int fd = create_shm_file(size);
-  void *data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  double x         = width/4,        /* parameters like cairo_rectangle */
+  y         = height/4,
+  aspect        = 0.5,/* aspect ratio */
+  corner_radius = height / 20.0;   /* and corner curvature radius */
 
-  struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
-  struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0,
-                                                       width, height, stride,
-                                                       WL_SHM_FORMAT_ARGB8888);
-  wl_shm_pool_destroy(pool);
-  close(fd);
+  double radius = corner_radius / aspect;
+  double degrees = M_PI / 180.0;
+  width /= 2; height /= 2;
+  cairo_new_sub_path (cr);
+  cairo_arc (cr, state->shake_offset + x + width - radius, y + radius, radius, -90 * degrees, 0 * degrees);
+  cairo_arc (cr, state->shake_offset + x + width - radius, y + height - radius, radius, 0 * degrees, 90 * degrees);
+  cairo_arc (cr, state->shake_offset + x + radius, y + height - radius, radius, 90 * degrees, 180 * degrees);
+  cairo_arc (cr, state->shake_offset + x + radius, y + radius, radius, 180 * degrees, 270 * degrees);
+  cairo_close_path (cr);
 
-  *out_surface = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_ARGB32,
-                                                     width, height, stride);
-  *out_cr = cairo_create(*out_surface);
-  return buffer;
+  cairo_set_source_rgba (cr, 0x23/255.f, 0x1F/255.f, 0x29/255.f, 0.9);
+  cairo_fill_preserve (cr);
+  cairo_set_source_rgba (cr, 0x5D/255.f, 0x28/255.f, 0x42/255.f, 0.98);
+  cairo_set_line_width (cr, 10.0);
+  cairo_stroke (cr);
+  return FALSE;
 }
 
-// ----------------------------------------------
-// Draw rounded rectangle with Cairo
-// ----------------------------------------------
-static void draw(cairo_t *cr) {
-  double r = 20.0; // corner radius
-  cairo_set_source_rgba(cr, 0.1, 0.1, 0.1, 0.7);
-  cairo_new_path(cr);
-  cairo_move_to(cr, r, 0);
-  cairo_arc(cr, width - r, r, r, -M_PI/2, 0);
-  cairo_arc(cr, width - r, height - r, r, 0, M_PI/2);
-  cairo_arc(cr, r, height - r, r, M_PI/2, M_PI);
-  cairo_arc(cr, r, r, r, M_PI, 1.5*M_PI);
-  cairo_close_path(cr);
-  cairo_fill(cr);
+static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer data) {
+    if (event->keyval == GDK_KEY_Escape || event->keyval == GDK_KEY_q) {
+        gtk_main_quit();
+    } else if (event->keyval == GDK_KEY_k) {
+        system("google-chrome &");
+        gtk_main_quit();
+    } else {
+        // Unknown key - shake!
+        start_shake(widget);
+    }
+    return TRUE;
 }
 
-// ----------------------------------------------
-// Main
-// ----------------------------------------------
-int main(void) {
-  display = wl_display_connect(NULL);
-  if (!display) {
-    fprintf(stderr, "Can't connect to Wayland display\n");
-    return 1;
-  }
+static void on_quit(GtkMenuItem *item, gpointer user_data) {
+    gtk_main_quit();
+}
 
-  struct wl_registry *registry = wl_display_get_registry(display);
-  wl_registry_add_listener(registry, &registry_listener, NULL);
-  wl_display_roundtrip(display);
+int main(int argc, char *argv[]) {
+  gtk_init(&argc, &argv);
 
-  if (!compositor || !layer_shell || !shm) {
-    fprintf(stderr, "Missing required Wayland globals\n");
-    return 1;
-  }
+  GtkWindow *window = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
 
-  surface = wl_compositor_create_surface(compositor);
-  layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-    layer_shell, surface, NULL, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "leaderd");
+  AppIndicator *indicator = app_indicator_new(
+    "my-app-id",
+    "/home/caralis/.local/share/leadme/leadme_flat2.png",
+    APP_INDICATOR_CATEGORY_APPLICATION_STATUS
+  );
+  // Create menu
+  GtkWidget *menu = gtk_menu_new();
+  GtkWidget *item_quit = gtk_menu_item_new_with_label("Quit");
+  g_signal_connect(item_quit, "activate", G_CALLBACK(on_quit), NULL);
+  gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_quit);
+  gtk_widget_show_all(menu);
 
-  zwlr_layer_surface_v1_add_listener(layer_surface, &layer_surface_listener, NULL);
-  zwlr_layer_surface_v1_set_size(layer_surface, width, height);
-  zwlr_layer_surface_v1_set_anchor(layer_surface, 0);
-  zwlr_layer_surface_v1_set_exclusive_zone(layer_surface, -1);
-  wl_surface_commit(surface);
+  app_indicator_set_status(indicator, APP_INDICATOR_STATUS_ACTIVE);
+  app_indicator_set_menu(indicator, GTK_MENU(menu));
 
-  // Wait for configure
-  while (!configured) {
-    wl_display_dispatch(display);
-  }
+  // Create and attach state
+  AppState *state = g_new0(AppState, 1);
+  g_object_set_data_full(G_OBJECT(window), "state", state, g_free);
 
-  // Create buffer and draw
-  cairo_t *cr;
-  cairo_surface_t *c_surface;
-  struct wl_buffer *buffer = create_buffer(width, height, &cr, &c_surface);
-  draw(cr);
+  // Setup layer shell
+  gtk_layer_init_for_window(window);
+  gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
+  gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
 
-  wl_surface_attach(surface, buffer, 0, 0);
-  wl_surface_damage_buffer(surface, 0, 0, width, height);
-  wl_surface_commit(surface);
+  // Set size
+  gtk_window_set_default_size(window, 400, 400);
+  gtk_window_set_resizable(window, FALSE);
+  gtk_window_set_decorated(window, FALSE);
 
-  // Main loop: wait for Esc key (or kill)
-  printf("leaderd active — press Ctrl+C or close the layer.\n");
-  while (wl_display_dispatch(display) != -1) {}
+  // Center the window
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, FALSE);
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, FALSE);
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, FALSE);
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_RIGHT, FALSE);
 
-  wl_display_disconnect(display);
+  gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+
+  // Connect signals
+  g_signal_connect(G_OBJECT(window), "draw", G_CALLBACK(on_draw), NULL);
+  g_signal_connect(G_OBJECT(window), "key-press-event", G_CALLBACK(on_key_press), NULL);
+  g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+
+  gtk_widget_show_all(GTK_WIDGET(window));
+  gtk_main();
+
   return 0;
 }
 
