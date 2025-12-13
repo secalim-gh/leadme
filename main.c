@@ -1,8 +1,11 @@
+#include <ctype.h>
 #include <gtk/gtk.h>
 #include <gtk-layer-shell.h>
 #include <stdlib.h>
 #include <math.h>
 #include <libappindicator3-0.1/libappindicator/app-indicator.h>
+
+#include "parser.h"
 
 typedef struct {
   gboolean shaking;
@@ -67,23 +70,27 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
 }
 
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer data) {
-    if (event->keyval == GDK_KEY_Escape || event->keyval == GDK_KEY_q) {
-        gtk_main_quit();
-    } else if (event->keyval == GDK_KEY_k) {
-        system("google-chrome &");
-        gtk_main_quit();
-    } else {
-        // Unknown key - shake!
-        start_shake(widget);
-    }
+  if (event->keyval == GDK_KEY_Escape || event->keyval == GDK_KEY_q) {
+    gtk_main_quit();
     return TRUE;
+  }
+
+  if (!isprint(event->keyval)) return TRUE;
+
+  if (exec(event->keyval)) {
+    gtk_main_quit();
+  } else {
+    start_shake(widget);
+  }
+  return TRUE;
 }
 
 static void on_quit(GtkMenuItem *item, gpointer user_data) {
-    gtk_main_quit();
+  gtk_main_quit();
 }
 
 int main(int argc, char *argv[]) {
+  load_config("/home/secalim/.config/leadme/config");
   gtk_init(&argc, &argv);
 
   GtkWindow *window = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
