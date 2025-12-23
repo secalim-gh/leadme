@@ -1,11 +1,13 @@
 #include <ctype.h>
 #include <gtk/gtk.h>
 #include <gtk-layer-shell.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <libappindicator3-0.1/libappindicator/app-indicator.h>
 
 #include "parser.h"
+
+#define PATH_LEN 256
 
 typedef struct {
   gboolean shaking;
@@ -90,41 +92,30 @@ static void on_quit(GtkMenuItem *item, gpointer user_data) {
 }
 
 int main(int argc, char *argv[]) {
-  load_config("/home/secalim/.config/leadme/config");
+	char path[PATH_LEN];
+	sprintf(path, "%s/.config/leadme/config", getenv("HOME"));
+  load_config(path);
   gtk_init(&argc, &argv);
 
   GtkWindow *window = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
 
-  AppIndicator *indicator = app_indicator_new(
-    "my-app-id",
-    "/home/caralis/.local/share/leadme/leadme_flat2.png",
-    APP_INDICATOR_CATEGORY_APPLICATION_STATUS
-  );
-  // Create menu
   GtkWidget *menu = gtk_menu_new();
   GtkWidget *item_quit = gtk_menu_item_new_with_label("Quit");
   g_signal_connect(item_quit, "activate", G_CALLBACK(on_quit), NULL);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_quit);
   gtk_widget_show_all(menu);
 
-  app_indicator_set_status(indicator, APP_INDICATOR_STATUS_ACTIVE);
-  app_indicator_set_menu(indicator, GTK_MENU(menu));
-
-  // Create and attach state
   AppState *state = g_new0(AppState, 1);
   g_object_set_data_full(G_OBJECT(window), "state", state, g_free);
 
-  // Setup layer shell
   gtk_layer_init_for_window(window);
   gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
   gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
 
-  // Set size
   gtk_window_set_default_size(window, 400, 400);
   gtk_window_set_resizable(window, FALSE);
   gtk_window_set_decorated(window, FALSE);
 
-  // Center the window
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, FALSE);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, FALSE);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, FALSE);
@@ -132,7 +123,6 @@ int main(int argc, char *argv[]) {
 
   gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
 
-  // Connect signals
   g_signal_connect(G_OBJECT(window), "draw", G_CALLBACK(on_draw), NULL);
   g_signal_connect(G_OBJECT(window), "key-press-event", G_CALLBACK(on_key_press), NULL);
   g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
