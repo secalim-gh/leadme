@@ -3,7 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+
+#ifdef USE_LAYER_SHELL
 #include <gtk-layer-shell.h>
+#endif
 
 #include <ctype.h>
 #include <sys/types.h>
