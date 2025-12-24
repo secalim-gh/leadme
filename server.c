@@ -123,15 +123,15 @@ void widget(void) {
   AppState *state = g_new0(AppState, 1);
   g_object_set_data_full(G_OBJECT(window), "state", state, g_free);
 
-  gtk_layer_init_for_window(window);
-  gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
-  gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
-
   gtk_window_set_default_size(window, 400, 400);
   gtk_window_set_resizable(window, FALSE);
   gtk_window_set_decorated(window, FALSE);
 
 #ifdef USE_LAYER_SHELL
+	gtk_layer_init_for_window(window);
+	gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
+	gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
+
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, FALSE);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, FALSE);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, FALSE);
