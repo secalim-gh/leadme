@@ -131,11 +131,17 @@ void widget(void) {
   gtk_window_set_resizable(window, FALSE);
   gtk_window_set_decorated(window, FALSE);
 
+#ifdef USE_LAYER_SHELL
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, FALSE);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, FALSE);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, FALSE);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_RIGHT, FALSE);
-
+#else 
+	// X11-specific setup
+	gtk_window_set_keep_above(window, TRUE);
+	gtk_window_set_position(window, GTK_WIN_POS_CENTER_ALWAYS);
+	gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_DIALOG);
+#endif
   gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
 
   g_signal_connect(G_OBJECT(window), "draw", G_CALLBACK(on_draw), NULL);
@@ -146,6 +152,18 @@ void widget(void) {
   gtk_main();
 
 }
+
+  // g_signal_connect(G_OBJECT(window), "map-event", G_CALLBACK(on_map), NULL);
+
+static gboolean on_map(GtkWidget *widget, GdkEvent *event, gpointer data) {
+  GdkWindow *gdk_window = gtk_widget_get_window(widget);
+  GdkDisplay *display = gdk_window_get_display(gdk_window);
+  GdkSeat *seat = gdk_display_get_default_seat(display);
+  gdk_seat_grab(seat, gdk_window, GDK_SEAT_CAPABILITY_KEYBOARD, 
+      TRUE, NULL, NULL, NULL, NULL);
+  return FALSE;
+}
+
 
 void sigchld_handler(int sig) {
 	while (waitpid(-1, NULL, WNOHANG) > 0);
