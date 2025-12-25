@@ -196,6 +196,17 @@ void server(void) {
 
 	struct sigaction sa = {.sa_handler = sigchld_handler, .sa_flags = SA_RESTART | SA_NOCLDSTOP};
   sigaction(SIGCHLD, &sa, NULL);
+
+	char *home = getenv("HOME");
+	char *old_path = getenv("PATH");
+
+	if (home && old_path) {
+		char new_path[1024];
+		// Combine current PATH with your local bin and Applications folders
+		snprintf(new_path, sizeof(new_path), "%s:%s/.local/bin:%s/Applications", 
+					 old_path, home, home);
+		setenv("PATH", new_path, 1);
+	}
 	
 	for(;;) {
 		socklen_t slen = sizeof(remote);
