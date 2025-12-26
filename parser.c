@@ -7,7 +7,15 @@
 
 #define ALL_KEYS 256
 
-static char *map[256] = { 0 };
+typedef struct command {
+	char c;
+	char *command;
+	struct command *lnode;
+	struct command *rnode;
+} Command;
+
+static Command *G_STATE = NULL;
+static Command *map[ALL_KEYS] = { 0 };
 
 int load_config(char config_path[]) {
   FILE *f;
@@ -52,11 +60,13 @@ int load_config(char config_path[]) {
 }
 
 int exec(char c) {
-  if (c > 0 && map[c]) {
+  if (c > 0) {
+		Command *command = map[c];
+		if 
     system(map[c]);
     return 1;
   } else {
     perror("Key not mapped or invalid.");
-    return 0;
+    return -1;
   }
 }

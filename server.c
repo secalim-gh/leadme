@@ -93,12 +93,14 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer dat
   }
 
   if (!isprint(event->keyval)) return TRUE;
-
-  if (exec(event->keyval)) {
+  int result = exec(event->keyval);
+  if (result) {
     gtk_main_quit();
-  } else {
+  } else if (-1 == result)  {
     start_shake(widget);
-  }
+  } else {
+		// pump(widget);
+	}
   return TRUE;
 }
 
