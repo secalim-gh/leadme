@@ -109,9 +109,6 @@ static void on_quit(GtkMenuItem *item, gpointer user_data) {
 }
 
 void widget(void) {
-	char path[PATH_LEN];
-	sprintf(path, "%s/.config/leadme/config", getenv("HOME"));
-  load_config(path);
   gtk_init(NULL, NULL);
 
   GtkWindow *window = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
@@ -171,6 +168,11 @@ void server(void) {
 		printf("Another instance is already running.\n");
 		return;
 	}
+
+	char path[PATH_LEN];
+	sprintf(path, "%s/.config/leadme/config", getenv("HOME"));
+	load_config(path);
+	
 	int s, s2, len;
 	struct sockaddr_un remote, local = {
 		.sun_family = AF_UNIX,
@@ -190,11 +192,10 @@ void server(void) {
 		exit(1);
 	}
 
+
 	if (listen(s, 5) == -1) {
-		perror("listen");
 		exit(1);
 	}
-
 
 	struct sigaction sa = {.sa_handler = sigchld_handler, .sa_flags = SA_RESTART | SA_NOCLDSTOP};
   sigaction(SIGCHLD, &sa, NULL);

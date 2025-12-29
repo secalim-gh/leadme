@@ -10,8 +10,8 @@
 typedef struct command {
 	char c;
 	char *command;
-	struct command *lnode;
-	struct command *rnode;
+	struct command *child;
+	struct command *brother;
 } Command;
 
 static Command *G_STATE = NULL;
@@ -46,10 +46,17 @@ int load_config(char config_path[]) {
   char *cmd = strtok(NULL, "\n");
   while (key && cmd) {
     if (cmd) {
-      if (NULL != map[key[0]]) free(map[key[0]]);
-      map[key[0]] = malloc(strlen(cmd) + 2);
-      strcpy(map[key[0]], cmd);
-      strcat(map[key[0]], " &");
+			Command *entry = malloc(sizeof(*entry));
+			if (!map[*key]) {
+				map[*key] = malloc(sizeof(map[0]));
+				map[*key]->c = *key;
+				map[*key]->brother = NULL;
+			}
+			while(*key) {
+			}
+			//malloc(strlen(cmd) + 2);
+      //strcpy(map[key[0]], cmd);
+      //strcat(map[key[0]], " &");
     }
     key = strtok(NULL, "=");
     cmd = strtok(NULL, "\n");
@@ -62,8 +69,7 @@ int load_config(char config_path[]) {
 int exec(char c) {
   if (c > 0) {
 		Command *command = map[c];
-		if 
-    system(map[c]);
+    system(map[c]->command);
     return 1;
   } else {
     perror("Key not mapped or invalid.");
