@@ -10,4 +10,4 @@ else
 	FLAGS=""
 fi
 
-gcc $FLAGS main.c parser.c -o leadme $LIBS
+gcc $FLAGS main.c parser.c -lm -o leadme $LIBS

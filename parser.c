@@ -4,7 +4,6 @@
 #include <string.h>
 #include <sys/fcntl.h>
 #include <stdio.h>
-
 #define ALL_KEYS 256
 
 typedef struct command {
@@ -16,6 +15,14 @@ typedef struct command {
 
 static Command *G_STATE = NULL;
 static Command *map[ALL_KEYS] = { 0 };
+
+Command* get_cmd(Command *list, char c) {
+	if (NULL == list) return NULL;
+	for (Command *cmd = list; cmd != NULL; cmd = cmd->brother) {
+		if (cmd->c == c) return cmd;
+	}
+	return NULL;
+}
 
 int load_config(char config_path[]) {
   FILE *f;
@@ -46,17 +53,33 @@ int load_config(char config_path[]) {
   char *cmd = strtok(NULL, "\n");
   while (key && cmd) {
     if (cmd) {
-			Command *entry = malloc(sizeof(*entry));
 			if (!map[*key]) {
-				map[*key] = malloc(sizeof(map[0]));
+				map[*key] = malloc(sizeof(Command));
 				map[*key]->c = *key;
 				map[*key]->brother = NULL;
+				map[*key]->child = NULL;
+				map[*key]->command = NULL;
 			}
-			while(*key) {
+			Command *current = map[*key++];
+
+			for(; *key != '\0'; key++) {
+				Command *exists = get_cmd(current->child, *key);						
+				if (exists) {
+					current = exists;
+					continue;
+				} else {
+					Command *tmp = current->child;
+					current->child = malloc(sizeof(Command));
+					current->child->c = *key;
+					current->child->brother = tmp;
+					current->child->child = NULL;
+					current->child->command = NULL;
+					current = current->child;
+				}
 			}
-			//malloc(strlen(cmd) + 2);
-      //strcpy(map[key[0]], cmd);
-      //strcat(map[key[0]], " &");
+			current->command = malloc(strlen(cmd) + 3);
+      strcpy(current->command, cmd);
+      strcat(current->command, " &\0");
     }
     key = strtok(NULL, "=");
     cmd = strtok(NULL, "\n");
@@ -66,13 +89,44 @@ int load_config(char config_path[]) {
   return 0;
 }
 
+static void free_tree(Command *node) {
+	if (!node) return;
+	free_tree(node->child);
+	free_tree(node->brother);
+
+	free(node->command);
+	free(node);
+}
+
+void reload_config(char config_path[]) {
+	for (int i = 0; i < ALL_KEYS; i++) {
+		if (map[i]) {
+			free_tree(map[i]);
+			map[i] = NULL;
+		}
+	}
+
+	G_STATE = NULL;
+
+	load_config(config_path);
+	printf("Reloaded config\n");
+}
+
 int exec(char c) {
   if (c > 0) {
-		Command *command = map[c];
-    system(map[c]->command);
-    return 1;
+		Command *command = NULL == G_STATE ? map[c] : get_cmd(G_STATE, c);
+		if (command && command->command) {
+			printf("Found command: %s\n", command->command);
+			system(command->command);
+			G_STATE = NULL;
+			return LEAD_DONE;
+		}
+		if (command != NULL) {
+			G_STATE = command->child;
+			return LEAD_WAIT;
+		}
+		return LEAD_FAIL;
   } else {
-    perror("Key not mapped or invalid.");
-    return -1;
-  }
+		return LEAD_FAIL;
+	}
 }

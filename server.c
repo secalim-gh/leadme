@@ -1,8 +1,8 @@
-#include <stdlib.h>
+#include "gdk/gdkkeysyms.h"
+#include "parser.h"
 #include <gtk/gtk.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
+#include <stdio.h>
 
 #ifdef USE_LAYER_SHELL
 #include <gtk-layer-shell.h>
@@ -21,6 +21,7 @@
 #define LOCK_PATH "/tmp/leadme.lock"
 
 #define PATH_LEN 256
+static char path[PATH_LEN] = {0};
 
 int busy = 0;
 
@@ -28,7 +29,41 @@ typedef struct {
   gboolean shaking;
   int shake_offset;
   int shake_count;
+	gboolean pumping;
+  double scale;
+  double pump_progress;
+	int sign;
 } AppState;
+
+static gboolean pump_timeout(gpointer data) {
+  GtkWidget *widget = GTK_WIDGET(data);
+  AppState *state = g_object_get_data(G_OBJECT(widget), "state");
+
+  state->pump_progress += 0.50; // Speed of animation
+
+  if (state->pump_progress < M_PI) {
+    state->scale = 1.0 + state->sign * (0.1 * sin(state->pump_progress));
+    gtk_widget_queue_draw(widget);
+    return TRUE;
+  } else {
+    state->pumping = FALSE;
+    state->scale = 1.0;
+    state->pump_progress = 0;
+    gtk_widget_queue_draw(widget);
+    return FALSE;
+  }
+}
+
+static void pump(GtkWidget *widget, int sign) {
+  AppState *state = g_object_get_data(G_OBJECT(widget), "state");
+  if (!state->pumping) {
+    state->pumping = TRUE;
+    state->pump_progress = 0;
+    state->scale = 1.0;
+		state->sign = sign;
+    g_timeout_add(16, pump_timeout, widget);
+  }
+}
 
 static gboolean shake_timeout(gpointer data) {
   GtkWidget *widget = GTK_WIDGET(data);
@@ -60,46 +95,64 @@ static void start_shake(GtkWidget *widget) {
 
 static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
   AppState *state = g_object_get_data(G_OBJECT(widget), "state");
-  int width = gtk_widget_get_allocated_width(widget);
-  int height = gtk_widget_get_allocated_height(widget);
+  int win_w = gtk_widget_get_allocated_width(widget);
+  int win_h = gtk_widget_get_allocated_height(widget);
 
-  double x      = width/4,        /* parameters like cairo_rectangle */
-  y							= height/4,
-  aspect        = 0.5,/* aspect ratio */
-  corner_radius = height / 20.0;   /* and corner curvature radius */
+  double current_scale = (state->scale > 0) ? state->scale : 1.0;
 
+  // Base dimensions (50% of window)
+  double base_w = win_w / 2.0;
+  double base_h = win_h / 2.0;
+
+  // Scaled dimensions
+  double scaled_w = base_w * current_scale;
+  double scaled_h = base_h * current_scale;
+
+  // Center coordinates: (WindowMid - ScaledMid)
+  double x = (win_w - scaled_w) / 2.0;
+  double y = (win_h - scaled_h) / 2.0;
+
+  double corner_radius = win_h / 20.0;
+  double aspect = 0.5;
   double radius = corner_radius / aspect;
   double degrees = M_PI / 180.0;
-  width /= 2; height /= 2;
-  cairo_new_sub_path (cr);
-  cairo_arc (cr, state->shake_offset + x + width - radius, y + radius, radius, -90 * degrees, 0 * degrees);
-  cairo_arc (cr, state->shake_offset + x + width - radius, y + height - radius, radius, 0 * degrees, 90 * degrees);
-  cairo_arc (cr, state->shake_offset + x + radius, y + height - radius, radius, 90 * degrees, 180 * degrees);
-  cairo_arc (cr, state->shake_offset + x + radius, y + radius, radius, 180 * degrees, 270 * degrees);
-  cairo_close_path (cr);
 
-  cairo_set_source_rgba (cr, 0x23/255.f, 0x1F/255.f, 0x29/255.f, 0.9);
-  cairo_fill_preserve (cr);
-  cairo_set_source_rgba (cr, 0x5D/255.f, 0x28/255.f, 0x42/255.f, 0.98);
-  cairo_set_line_width (cr, 10.0);
-  cairo_stroke (cr);
+  cairo_new_sub_path(cr);
+  cairo_arc(cr, state->shake_offset + x + scaled_w - radius, y + radius, radius, -90 * degrees, 0 * degrees);
+  cairo_arc(cr, state->shake_offset + x + scaled_w - radius, y + scaled_h - radius, radius, 0 * degrees, 90 * degrees);
+  cairo_arc(cr, state->shake_offset + x + radius, y + scaled_h - radius, radius, 90 * degrees, 180 * degrees);
+  cairo_arc(cr, state->shake_offset + x + radius, y + radius, radius, 180 * degrees, 270 * degrees);
+  cairo_close_path(cr);
+
+  cairo_set_source_rgba(cr, 0x23/255.f, 0x1F/255.f, 0x29/255.f, 0.9);
+  cairo_fill_preserve(cr);
+  cairo_set_source_rgba(cr, 0x5D/255.f, 0x28/255.f, 0x42/255.f, 0.98);
+  cairo_set_line_width(cr, 10.0);
+  cairo_stroke(cr);
+
   return FALSE;
 }
 
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer data) {
-  if (event->keyval == GDK_KEY_Escape || event->keyval == GDK_KEY_q) {
+	if ((event->state & GDK_CONTROL_MASK) && event->keyval == GDK_KEY_comma) {
+    reload_config(path);
+		pump(widget, 1);
+		return TRUE;
+  }
+
+  if (event->keyval == GDK_KEY_Escape) {
     gtk_main_quit();
     return TRUE;
   }
 
   if (!isprint(event->keyval)) return TRUE;
   int result = exec(event->keyval);
-  if (result) {
+  if (result == LEAD_DONE) {
     gtk_main_quit();
-  } else if (-1 == result)  {
+  } else if (result == LEAD_FAIL)  {
     start_shake(widget);
   } else {
-		// pump(widget);
+		pump(widget, -1);
 	}
   return TRUE;
 }
@@ -169,7 +222,6 @@ void server(void) {
 		return;
 	}
 
-	char path[PATH_LEN];
 	sprintf(path, "%s/.config/leadme/config", getenv("HOME"));
 	load_config(path);
 	
