@@ -109,7 +109,6 @@ void reload_config(char config_path[]) {
 	G_STATE = NULL;
 
 	load_config(config_path);
-	printf("Reloaded config\n");
 }
 
 int exec(char c) {

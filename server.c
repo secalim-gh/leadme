@@ -1,8 +1,9 @@
-#include "gdk/gdkkeysyms.h"
 #include "parser.h"
 #include <gtk/gtk.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifdef USE_LAYER_SHELL
 #include <gtk-layer-shell.h>
@@ -22,6 +23,8 @@
 
 #define PATH_LEN 256
 static char path[PATH_LEN] = {0};
+static char BUF[8];
+static int p[2] = {0};
 
 int busy = 0;
 
@@ -135,17 +138,21 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
 
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer data) {
 	if ((event->state & GDK_CONTROL_MASK) && event->keyval == GDK_KEY_comma) {
-    reload_config(path);
+    if (-1 == write(p[1], "RELOAD", 7)) {
+			perror("Write error");
+			gtk_main_quit();
+			exit(EXIT_FAILURE);
+		}
 		pump(widget, 1);
 		return TRUE;
   }
 
   if (event->keyval == GDK_KEY_Escape) {
     gtk_main_quit();
-    return TRUE;
+    goto defer;
   }
 
-  if (!isprint(event->keyval)) return TRUE;
+  if (!isprint(event->keyval)) goto defer;
   int result = exec(event->keyval);
   if (result == LEAD_DONE) {
     gtk_main_quit();
@@ -154,12 +161,17 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer dat
   } else {
 		pump(widget, -1);
 	}
-  return TRUE;
+defer:
+	if (-1 == write(p[1], "GBRSHHH", 7)) {
+		perror("Write error");
+	}
+	return TRUE;
 }
 
 static void on_quit(GtkMenuItem *item, gpointer user_data) {
   gtk_main_quit();
 }
+
 
 void widget(void) {
   gtk_init(NULL, NULL);
@@ -262,6 +274,11 @@ void server(void) {
 					 old_path, home, home);
 		setenv("PATH", new_path, 1);
 	}
+	if (-1 == pipe(p)) {
+		perror("Pipe error");
+		exit(EXIT_FAILURE);
+	}
+
 	
 	for(;;) {
 		socklen_t slen = sizeof(remote);
@@ -285,6 +302,15 @@ void server(void) {
 				close(s);
 				widget();
 				exit(EXIT_SUCCESS);
+			} else {
+				if (-1 == read(p[0], BUF, sizeof(BUF))) {
+					perror("Read error");
+					exit(EXIT_FAILURE);
+				} else {
+					if (0 == strcmp(BUF, "RELOAD")) {
+						reload_config(path);
+					}
+				}
 			}
 		}
 
