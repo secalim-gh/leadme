@@ -168,21 +168,10 @@ defer:
 	return TRUE;
 }
 
-static void on_quit(GtkMenuItem *item, gpointer user_data) {
-  gtk_main_quit();
-}
-
-
 void widget(void) {
   gtk_init(NULL, NULL);
 
   GtkWindow *window = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
-
-  GtkWidget *menu = gtk_menu_new();
-  GtkWidget *item_quit = gtk_menu_item_new_with_label("Quit");
-  g_signal_connect(item_quit, "activate", G_CALLBACK(on_quit), NULL);
-  gtk_menu_shell_append(GTK_MENU_SHELL(menu), item_quit);
-  gtk_widget_show_all(menu);
 
   AppState *state = g_new0(AppState, 1);
   g_object_set_data_full(G_OBJECT(window), "state", state, g_free);
