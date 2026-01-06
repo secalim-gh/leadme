@@ -1,5 +1,8 @@
 # leadme
-Simple LeaderKey style launcher.
+Simple [LeaderKey](https://github.com/mikker/LeaderKey) style launcher.
+
+## Example
+![output](https://github.com/user-attachments/assets/f0bd5b0c-3956-4566-8c59-17adfade34d0)
 
 ## Install
 Just git clone the repo and launch install.sh, that will build and install the binary to /usr/local/bin/
