@@ -23,7 +23,7 @@
 
 #define PATH_LEN 256
 static char path[PATH_LEN] = {0};
-static char BUF[8];
+static char BUF[7];
 static int p[2] = {0};
 
 int busy = 0;
@@ -144,6 +144,7 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer dat
 			exit(EXIT_FAILURE);
 		}
 		pump(widget, 1);
+		reload_config(path);
 		return TRUE;
   }
 
@@ -263,11 +264,6 @@ void server(void) {
 					 old_path, home, home);
 		setenv("PATH", new_path, 1);
 	}
-	if (-1 == pipe(p)) {
-		perror("Pipe error");
-		exit(EXIT_FAILURE);
-	}
-
 	
 	for(;;) {
 		socklen_t slen = sizeof(remote);
@@ -282,6 +278,12 @@ void server(void) {
 		} else {
 			send(s2, "SUCCESS", 7, 0);
 			busy = 1;
+			
+			if (-1 == pipe(p)) {
+				perror("Pipe error");
+				exit(EXIT_FAILURE);
+			}
+
 			pid_t pid = fork();
 			if (-1 == pid) {
 				perror("Fork error");
@@ -289,13 +291,13 @@ void server(void) {
 			}
 			if (0 == pid) {
 				close(s);
+				close(p[0]);
 				widget();
+				close(p[1]);
 				exit(EXIT_SUCCESS);
 			} else {
-				if (-1 == read(p[0], BUF, sizeof(BUF))) {
-					perror("Read error");
-					exit(EXIT_FAILURE);
-				} else {
+				close(p[1]);
+				while (0 < read(p[0], BUF, sizeof(BUF))) {
 					if (0 == strcmp(BUF, "RELOAD")) {
 						reload_config(path);
 					}
